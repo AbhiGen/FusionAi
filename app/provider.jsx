@@ -1,20 +1,18 @@
-import React from 'react'
-import { ThemeProvider as NextThemesProvider } from "next-themes"
-
+import React from 'react';
+import { ThemeProvider as NextThemesProvider } from "next-themes";
 
 function Provider({ children, ...props }) {
   return (
     <NextThemesProvider
-    attribute="class"
-    defaultTheme="system"
-    enableSystem
-    disableTransitionOnChange
-    {...props}>
-      <div>
-        provider
-      </div>
+      attribute="class"        // uses class for Tailwind dark mode
+      defaultTheme="system"    // respect system preference
+      enableSystem
+      disableTransitionOnChange
+      {...props}
+    >
+      {children}  {/* Render your app here! */}
     </NextThemesProvider>
-  )
+  );
 }
 
-export default Provider
+export default Provider;
