@@ -1,8 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+<<<<<<< HEAD
 /* ---break---
 */
 @custom-variant dark (&:is(.dark *));
+=======
+>>>>>>> 97fbbf3803668f1e1dcc94b1cdff6c23202483e0
 
 /* Removed unsupported @custom-variant; configure dark mode in tailwind.config.js, for example:
    module.exports = {
@@ -128,6 +131,7 @@
     @apply bg-background text-foreground;
   }
 }
+<<<<<<< HEAD
 
 @layer base {
   :root {
@@ -152,3 +156,5 @@
     --sidebar-ring: oklch(0.439 0 0);
   }
 }
+=======
+>>>>>>> 97fbbf3803668f1e1dcc94b1cdff6c23202483e0
