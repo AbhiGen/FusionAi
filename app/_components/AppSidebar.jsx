@@ -11,7 +11,7 @@ export function AppSidebar() {
     return (
         <Sidebar>
             <SidebarHeader>
-                <div classname="p-3">
+                <div classname="p-4">
                     <div className="flex items-center gap-3">
                         <Image
                             src="/logo.svg"
