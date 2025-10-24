@@ -3,6 +3,7 @@ import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { Sidebar } from 'lucide-react';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from './_components/AppSidebar';
+import AppHeader from './_components/AppHeader';
 
 function Provider({ children, ...props }) {
   return (
@@ -14,9 +15,14 @@ function Provider({ children, ...props }) {
       {...props}
     >
       <SidebarProvider>
-        <SidebarTrigger />
+        
         <AppSidebar />
+
+        <div className='w-full'> 
+        <AppHeader />
         {children}
+        </div>
+
       </SidebarProvider>
     </NextThemesProvider>
   );
