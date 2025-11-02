@@ -20,7 +20,7 @@ const ChatInputBox = () => {
                 </Button>
                 <div>
                     <Button variant={'ghost'} size={'icon'} className={'mr-2'}><Mic className='h-5 w-5'></Mic></Button>
-                    <Button size={'icon'} className={'bg-violet-500 hover:bg-violet-600'}><Send className='h-5 w-5'></Send></Button>
+                    <Button size={'icon'} className={'bg-black hover:bg-violet-600'}><Send className='h-5 w-5'></Send></Button>
                 </div>
             </div>
         </div>
