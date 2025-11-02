@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 
 const AppHeader = () => {
   return (
-    <div className='p-3 w-full shadow flex justify-between items-center'>
+    <div className="p-3 shadow flex justify-between items-center bg-white max-w-full">
       <SidebarTrigger />
       <Button>Sign In</Button>
     </div>
