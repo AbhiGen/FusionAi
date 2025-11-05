@@ -11,11 +11,12 @@ import {
 import { Sun, Moon, Bolt, User2, LogOut } from "lucide-react";
 import Image from "next/image";
 import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
-import UsageCreditProgress from "@/components/UsageCreditProgress"; // ✅ Import added
+import UsageCreditProgress from "./UsageCreditProgress";
+
 
 export function AppSidebar() {
   const { theme, setTheme } = useTheme();
-  const { user } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
 
   return (
     <Sidebar>
@@ -28,7 +29,7 @@ export function AppSidebar() {
               <h2 className="font-bold text-xl">FusionAi</h2>
             </div>
 
-            {/* Dark/Light toggle button */}
+            {/* Dark/Light toggle */}
             <Button
               variant="ghost"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -45,14 +46,18 @@ export function AppSidebar() {
         <SidebarGroup>
           <div className="p-3">
             <h2 className="font-bold text-lg">Chat</h2>
-            <p className="text-sm text-gray-400">Sign in to start a new chat</p>
+            {!isSignedIn && (
+              <p className="text-sm text-gray-400">Sign in to start a new chat</p>
+            )}
           </div>
         </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>
         <div className="p-3 mb-10">
-          {!user ? (
+          {!isLoaded ? (
+            <p className="text-gray-400 text-sm">Loading...</p>
+          ) : !isSignedIn ? (
             <SignInButton>
               <Button className="w-full" size="lg">
                 Sign In / Sign Up
@@ -60,7 +65,7 @@ export function AppSidebar() {
             </SignInButton>
           ) : (
             <div>
-              {/* ✅ Progress bar visible only after sign-in */}
+              {/* ✅ Show only when signed in */}
               <UsageCreditProgress />
 
               <Button className="w-full mb-3">
