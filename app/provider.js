@@ -7,22 +7,19 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./_components/AppSidebar";
 import AppHeader from "./_components/AppHeader";
 
-// 🆕 Import the Context from the new dedicated file
-// app/provider.js
-// Make sure you are using curly braces { } around the context name
-import { AiSelectedModelContext } from "@/context/AiSelectedModels"; 
-import { DefaultModel } from "@/shared/AiModelDef"; 
+// 🧠 Context for managing selected AI models
+import { AiSelectedModelContext } from "@/context/AiSelectedModels";
+import { DefaultModel } from "@/shared/AiModelDef";
 
-// 🧩 Firebase imports
+// 🔥 Firebase imports
 import { db } from "@/config/FirebaseConfig";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
-// --- AiSelectedModelContext Provider Component ---
-// This component manages the state for the selected models
+/* --------------------------------------------------
+   🧩 AiModelProvider – Context provider for model selection
+-------------------------------------------------- */
 const AiModelProvider = ({ children }) => {
-  // State to hold the selected model for each AI (e.g., GPT, Gemini)
-  // Initialize with the DefaultModel structure
-  const [selectedModels, setSelectedModels] = useState(DefaultModel); 
+  const [selectedModels, setSelectedModels] = useState(DefaultModel);
 
   return (
     <AiSelectedModelContext.Provider value={{ selectedModels, setSelectedModels }}>
@@ -30,8 +27,10 @@ const AiModelProvider = ({ children }) => {
     </AiSelectedModelContext.Provider>
   );
 };
-// ---------------------------------------------------
 
+/* --------------------------------------------------
+   🧩 AppProviders – Handles user creation in Firestore
+-------------------------------------------------- */
 function AppProviders({ children }) {
   const { user } = useUser();
 
@@ -40,24 +39,29 @@ function AppProviders({ children }) {
       if (!user) return;
 
       try {
-        const userRef = doc(db, "users", user.primaryEmailAddress.emailAddress);
+        // ✅ Correct Firestore path
+        const userEmail = user.primaryEmailAddress?.emailAddress;
+        if (!userEmail) return;
+
+        const userRef = doc(db, "users", userEmail);
         const userSnap = await getDoc(userRef);
 
+        // ✅ Create user document only if it doesn’t exist
         if (!userSnap.exists()) {
           await setDoc(userRef, {
             name: user.fullName,
-            email: user.primaryEmailAddress.emailAddress,
+            email: userEmail,
             createdAt: new Date(),
             remainingMsg: 5,
             plan: "Free",
             credits: 100,
           });
-          console.log("✅ New user created in Firestore");
+          console.log("✅ New user created in Firestore:", userEmail);
         } else {
-          console.log("ℹ️ Existing user detected");
+          console.log("ℹ️ Existing user detected:", userEmail);
         }
       } catch (error) {
-        console.error("❌ Firestore error:", error);
+        console.error("❌ Firestore error while creating user:", error);
       }
     };
 
@@ -77,7 +81,9 @@ function AppProviders({ children }) {
   );
 }
 
-
+/* --------------------------------------------------
+   🧩 Root Provider – Combines Clerk, Themes, and Contexts
+-------------------------------------------------- */
 export default function Provider({ children }) {
   return (
     <ClerkProvider publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}>

@@ -1,8 +1,11 @@
-import React, { useState } from 'react'
-import AiModels from '../../shared/AiModel'
-import { DefaultModel } from '../../shared/AiModelDef' // ✅ Import your default model mapping
-import Image from 'next/image'
-import { Lock, MessageSquare } from 'lucide-react'
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useUser } from "@clerk/nextjs";
+import AiModels from "../../shared/AiModel";
+import { DefaultModel } from "../../shared/AiModelDef";
+import Image from "next/image";
+import { Lock, MessageSquare } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -11,31 +14,107 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Switch } from '@/components/ui/switch'
-import { Button } from '@/components/ui/button'
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+
+// ✅ Firebase imports
+import { db } from "@/config/FirebaseConfig";
+import { doc, setDoc, collection, getDocs } from "firebase/firestore";
 
 const AiMultiModel = () => {
-  const [aimodel, setAiModels] = useState(AiModels)
+  const { user } = useUser();
+  const [aimodel, setAiModels] = useState(AiModels);
 
+  // ✅ Load saved selections for this user
+  useEffect(() => {
+    const loadSelections = async () => {
+      if (!user) return;
+
+      try {
+        const userEmail = user.primaryEmailAddress.emailAddress;
+        const userCollection = collection(db, "users", userEmail, "aiModelSelections");
+        const querySnapshot = await getDocs(userCollection);
+
+        const selections = {};
+        querySnapshot.forEach((doc) => {
+          selections[doc.id] = doc.data().selectedSubModel;
+        });
+
+        // Update local state with saved selections
+        setAiModels((prev) =>
+          prev.map((model) => {
+            const saved = selections[model.model];
+            return saved ? { ...model, selectedSubModel: saved } : model;
+          })
+        );
+
+        console.log("✅ Loaded saved selections for user:", userEmail);
+      } catch (error) {
+        console.error("❌ Error loading user selections:", error);
+      }
+    };
+
+    loadSelections();
+  }, [user]);
+
+  // ✅ Handle toggle
   const onToggleChange = (model, value) => {
     setAiModels((prev) =>
-      prev.map((m) =>
-        m.model === model ? { ...m, enable: value } : m
-      )
-    )
-  }
+      prev.map((m) => (m.model === model ? { ...m, enable: value } : m))
+    );
+  };
 
-  // Separate Free and Premium sub-models
-  const getFreeSubModels = (model) => model.subModel.filter(sub => !sub.premium)
-  const getPremiumSubModels = (model) => model.subModel.filter(sub => sub.premium)
+  // ✅ Save selected model under the user's Firestore document
+  const handleModelSelect = async (parentModel, selectedSubModelId) => {
+    if (!user) {
+      console.warn("⚠️ No user logged in — cannot save selection.");
+      return;
+    }
 
-  // ✅ Function to get the default model name from DefaultModel
+    try {
+      const model = aimodel.find((m) => m.model === parentModel);
+      const selectedSub = model.subModel.find((sub) => sub.id === selectedSubModelId);
+      const userEmail = user.primaryEmailAddress.emailAddress;
+
+      // Update local state for immediate feedback
+      setAiModels((prev) =>
+        prev.map((m) =>
+          m.model === parentModel ? { ...m, selectedSubModel: selectedSub } : m
+        )
+      );
+
+      // ✅ Save under user's document
+      await setDoc(
+        doc(db, "users", userEmail, "aiModelSelections", parentModel),
+        {
+          model: parentModel,
+          selectedSubModel: {
+            id: selectedSub.id,
+            name: selectedSub.name,
+            premium: selectedSub.premium,
+          },
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      console.log(`✅ Saved ${parentModel}: ${selectedSub.name} for user ${userEmail}`);
+    } catch (error) {
+      console.error("❌ Error saving user model selection:", error);
+    }
+  };
+
+  // ✅ Helpers for Free / Premium
+  const getFreeSubModels = (model) => model.subModel.filter((sub) => !sub.premium);
+  const getPremiumSubModels = (model) => model.subModel.filter((sub) => sub.premium);
+
+  // ✅ Default dropdown name
   const getDefaultModelName = (aiModel) => {
-    const defaultId = DefaultModel[aiModel.model]?.modelId
-    const foundSubModel = aiModel.subModel.find(sub => sub.id === defaultId)
-    return foundSubModel ? foundSubModel.name : "Select Model"
-  }
+    const defaultId = DefaultModel[aiModel.model]?.modelId;
+    const foundSubModel = aiModel.subModel.find((sub) => sub.id === defaultId);
+    return aiModel.selectedSubModel?.name || (foundSubModel ? foundSubModel.name : "Select Model");
+  };
 
   return (
     <div className="flex flex-1 h-[75vh] border-b">
@@ -43,26 +122,24 @@ const AiMultiModel = () => {
         <div
           key={model.model || index}
           className={`flex flex-col border-r h-full overflow-auto 
-            ${model.enable ? 'min-w-[350px]' : 'w-[100px] flex-none'}`}
+            ${model.enable ? "min-w-[350px]" : "w-[100px] flex-none"}`}
         >
-          {/* Header Section */}
+          {/* Header */}
           <div className="flex w-full items-center justify-between p-4 border-b h-[70px]">
             <div className="flex items-center gap-4">
-              <Image
-                src={model.icon}
-                alt={model.model}
-                width={24}
-                height={24}
-              />
+              <Image src={model.icon} alt={model.model} width={24} height={24} />
 
-              {/* Dropdown Only When Enabled */}
+              {/* Dropdown */}
               {model.enable && (
-                <Select defaultValue={DefaultModel[model.model]?.modelId}>
+                <Select
+                  disabled={model.premium} // ✅ Disable entire select if model is premium
+                  defaultValue={model.selectedSubModel?.id || DefaultModel[model.model]?.modelId}
+                  onValueChange={(value) => handleModelSelect(model.model, value)}
+                >
                   <SelectTrigger className="w-[200px]">
                     <SelectValue placeholder={getDefaultModelName(model)} />
                   </SelectTrigger>
                   <SelectContent>
-
                     {/* FREE MODELS */}
                     {getFreeSubModels(model).length > 0 && (
                       <SelectGroup>
@@ -109,10 +186,10 @@ const AiMultiModel = () => {
             </div>
           </div>
 
-          {/* Premium Model Overlay */}
+          {/* Premium overlay */}
           {model.premium && model.enable && (
             <div className="flex items-center justify-center h-full">
-              <Button>
+              <Button disabled>
                 <Lock className="mr-2" /> Upgrade to Unlock
               </Button>
             </div>
@@ -120,7 +197,7 @@ const AiMultiModel = () => {
         </div>
       ))}
     </div>
-  )
-}
+  );
+};
 
-export default AiMultiModel
+export default AiMultiModel;
