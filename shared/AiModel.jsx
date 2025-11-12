@@ -28,7 +28,7 @@ export default [
     {
         model: "DeepSeek",
         icon: "/deepseek.png",
-        premium: true,
+        premium: false,
         enable: true,
         subModel: [
             { name: "DeepSeek R1", premium: false, id: "DeepSeek-R1" },
@@ -48,7 +48,7 @@ export default [
     {
         model: "Grok",
         icon: "/grok.png",
-        premium: true,
+        premium: false,
         enable: true,
         subModel: [
             { name: "Grok 3 Mini", premium: false, id: "grok-3-mini" },

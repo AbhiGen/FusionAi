@@ -20,9 +20,10 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 -------------------------------------------------- */
 const AiModelProvider = ({ children }) => {
   const [selectedModels, setSelectedModels] = useState(DefaultModel);
+   const [messages, setMessages] = useState([]);
 
   return (
-    <AiSelectedModelContext.Provider value={{ selectedModels, setSelectedModels }}>
+    <AiSelectedModelContext.Provider value={{ selectedModels, setSelectedModels ,messages, setMessages }}>
       {children}
     </AiSelectedModelContext.Provider>
   );
@@ -33,6 +34,7 @@ const AiModelProvider = ({ children }) => {
 -------------------------------------------------- */
 function AppProviders({ children }) {
   const { user } = useUser();
+ 
 
   useEffect(() => {
     const createNewUser = async () => {
