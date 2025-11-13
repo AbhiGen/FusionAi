@@ -21,22 +21,20 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { AiSelectedModelContext } from "@/context/AiSelectedModels";
-
-// ✅ Firebase imports
 import { db } from "@/config/FirebaseConfig";
-import {
-  doc,
-  setDoc,
-  collection,
-  getDocs,
-  getDoc,
-} from "firebase/firestore";
+import { doc, setDoc, collection, getDocs, getDoc } from "firebase/firestore";
 
 const AiMultiModel = () => {
   const { user, isSignedIn } = useUser();
   const [aimodel, setAiModels] = useState(AiModels);
-  const { selectedModels, setSelectedModels, messages, setMessages } =
-    useContext(AiSelectedModelContext);
+
+  const {
+    selectedModels,
+    setSelectedModels,
+    messages,
+    setMessages,
+    currentChatId,
+  } = useContext(AiSelectedModelContext);
 
   /* ------------------------------------------------------------------ */
   /* 🔹 LOAD USER MODEL SELECTIONS */
@@ -44,7 +42,6 @@ const AiMultiModel = () => {
   useEffect(() => {
     const loadSelections = async () => {
       if (!user) return;
-
       try {
         const userEmail = user.primaryEmailAddress.emailAddress;
         const userCollection = collection(
@@ -54,7 +51,6 @@ const AiMultiModel = () => {
           "aiModelSelections"
         );
         const querySnapshot = await getDocs(userCollection);
-
         const selections = {};
         querySnapshot.forEach((doc) => {
           selections[doc.id] = doc.data().selectedSubModel;
@@ -66,39 +62,43 @@ const AiMultiModel = () => {
             return saved ? { ...model, selectedSubModel: saved } : model;
           })
         );
-
-        console.log("✅ Loaded model selections for user:", userEmail);
       } catch (error) {
         console.error("❌ Error loading model selections:", error);
       }
     };
-
     loadSelections();
   }, [user]);
 
   /* ------------------------------------------------------------------ */
-  /* 🔹 LOAD SAVED CHAT HISTORY */
+  /* 🔹 RESET CHAT WHEN NEW CHAT STARTS */
   /* ------------------------------------------------------------------ */
   useEffect(() => {
-    const loadChatHistory = async () => {
-      if (!user) return;
+    if (!user || !currentChatId) return;
 
+    const loadChatHistory = async () => {
       try {
         const userEmail = user.primaryEmailAddress.emailAddress;
-        const userDoc = doc(db, "users", userEmail, "chats", "chatHistory");
-        const snapshot = await getDoc(userDoc);
+        const chatDoc = doc(db, "users", userEmail, "chats", currentChatId);
+        const snapshot = await getDoc(chatDoc);
 
         if (snapshot.exists()) {
-          console.log("✅ Loaded previous chats from DB");
-          setMessages(snapshot.data());
+          const chatData = snapshot.data();
+          setMessages(chatData.messages || {});
+          console.log("✅ Restored chat:", currentChatId);
+        } else {
+          // 🆕 Reset all chats for a fresh conversation
+          const cleared = {};
+          AiModels.forEach((m) => (cleared[m.model] = []));
+          setMessages(cleared);
+          console.log("🆕 Started a new fresh chat session:", currentChatId);
         }
-      } catch (error) {
-        console.error("❌ Error loading chat history:", error);
+      } catch (err) {
+        console.error("❌ Error loading chat history:", err);
       }
     };
 
     loadChatHistory();
-  }, [user]);
+  }, [user, currentChatId]);
 
   /* ------------------------------------------------------------------ */
   /* 🔹 AUTO-SCROLL TO BOTTOM */
@@ -117,13 +117,14 @@ const AiMultiModel = () => {
     setAiModels((prev) =>
       prev.map((m) => (m.model === modelName ? { ...m, enable: value } : m))
     );
-
-    if (!value) {
-      // ✅ FIX: Do NOT clear messages, just disable model activity
-      console.log(`🚫 ${modelName} is now OFF`);
-    } else {
-      console.log(`✅ ${modelName} is now ON`);
-    }
+    setSelectedModels((prev) => ({
+      ...prev,
+      [modelName]: {
+        ...(prev[modelName] || {}),
+        enabled: value,
+        modelId: prev[modelName]?.modelId || "",
+      },
+    }));
   };
 
   /* ------------------------------------------------------------------ */
@@ -131,7 +132,6 @@ const AiMultiModel = () => {
   /* ------------------------------------------------------------------ */
   const handleModelSelect = async (parentModel, selectedSubModelId) => {
     if (!user) return console.warn("⚠️ Sign in to save model selection.");
-
     try {
       const model = aimodel.find((m) => m.model === parentModel);
       const selectedSub = model.subModel.find(
@@ -146,6 +146,14 @@ const AiMultiModel = () => {
             : m
         )
       );
+      setSelectedModels((prev) => ({
+        ...prev,
+        [parentModel]: {
+          ...(prev[parentModel] || {}),
+          modelId: selectedSub.id,
+          enabled: prev[parentModel]?.enabled ?? true,
+        },
+      }));
 
       await setDoc(
         doc(db, "users", userEmail, "aiModelSelections", parentModel),
@@ -160,23 +168,21 @@ const AiMultiModel = () => {
         },
         { merge: true }
       );
-
-      console.log(`✅ Saved ${parentModel}: ${selectedSub.name}`);
     } catch (error) {
       console.error("❌ Error saving model selection:", error);
     }
   };
 
   /* ------------------------------------------------------------------ */
-  /* 🔹 FIRESTORE SAVE CHAT */
+  /* 🔹 SAVE CHAT TO FIRESTORE */
   /* ------------------------------------------------------------------ */
   const saveChatToDB = async (newMessages) => {
-    if (!user) return;
+    if (!user || !currentChatId) return;
     try {
       const userEmail = user.primaryEmailAddress.emailAddress;
-      const chatDoc = doc(db, "users", userEmail, "chats", "chatHistory");
-      await setDoc(chatDoc, newMessages, { merge: true });
-      console.log("✅ Chat saved to Firestore");
+      const chatDoc = doc(db, "users", userEmail, "chats", currentChatId);
+      await setDoc(chatDoc, { messages: newMessages }, { merge: true });
+      console.log(`✅ Chat ${currentChatId} saved`);
     } catch (err) {
       console.error("❌ Error saving chat to DB:", err);
     }
@@ -186,25 +192,14 @@ const AiMultiModel = () => {
   /* 🔹 SEND MESSAGE */
   /* ------------------------------------------------------------------ */
   const handleSend = async (model, userInput) => {
-    if (!isSignedIn) {
-      alert("⚠️ Please sign in first to chat!");
-      return;
-    }
-
-    // ✅ FIX: Skip sending message if model is disabled
-    if (!model.enable) {
-      console.warn(`🚫 ${model.model} is OFF — skipping message`);
-      return;
-    }
-
-    if (!userInput.trim()) return;
+    if (!isSignedIn) return alert("⚠️ Please sign in first to chat!");
+    if (!model.enable || !userInput.trim()) return;
 
     const currentMessages = messages[model.model] || [];
     const updatedMessages = [
       ...currentMessages,
       { role: "user", content: userInput },
     ];
-
     setMessages((prev) => ({
       ...prev,
       [model.model]: updatedMessages,
@@ -220,19 +215,15 @@ const AiMultiModel = () => {
           parentmodel: model.model,
         }),
       });
-
       const data = await response.json();
-
       const finalMessages = [
         ...updatedMessages,
         { role: "assistant", content: data.reply },
       ];
-
       setMessages((prev) => ({
         ...prev,
         [model.model]: finalMessages,
       }));
-
       await saveChatToDB({ ...messages, [model.model]: finalMessages });
     } catch (err) {
       console.error("❌ Error fetching AI response:", err);
@@ -240,13 +231,12 @@ const AiMultiModel = () => {
   };
 
   /* ------------------------------------------------------------------ */
-  /* 🔹 HELPERS */
+  /* 🔹 UI HELPERS */
   /* ------------------------------------------------------------------ */
   const getFreeSubModels = (model) =>
     model.subModel.filter((sub) => !sub.premium);
   const getPremiumSubModels = (model) =>
     model.subModel.filter((sub) => sub.premium);
-
   const getDefaultModelName = (aiModel) => {
     const defaultId = DefaultModel[aiModel.model]?.modelId;
     const foundSubModel = aiModel.subModel.find((sub) => sub.id === defaultId);
@@ -257,7 +247,7 @@ const AiMultiModel = () => {
   };
 
   /* ------------------------------------------------------------------ */
-  /* 🔹 RENDER UI */
+  /* 🔹 RENDER */
   /* ------------------------------------------------------------------ */
   return (
     <div className="flex flex-1 h-[75vh] border-b">
@@ -274,7 +264,6 @@ const AiMultiModel = () => {
           <div className="flex w-full items-center justify-between p-4 border-b h-[70px] bg-white shadow-sm">
             <div className="flex items-center gap-4">
               <Image src={model.icon} alt={model.model} width={24} height={24} />
-
               {model.enable && (
                 <Select
                   disabled={model.premium}
@@ -320,7 +309,6 @@ const AiMultiModel = () => {
                 </Select>
               )}
             </div>
-
             <div>
               {model.enable ? (
                 <Switch
@@ -336,14 +324,7 @@ const AiMultiModel = () => {
             </div>
           </div>
 
-          {model.premium && model.enable && (
-            <div className="flex items-center justify-center h-full">
-              <Button disabled className="rounded-xl">
-                <Lock className="mr-2" /> Upgrade to Unlock
-              </Button>
-            </div>
-          )}
-
+          {/* Chat area */}
           {model.enable && (
             <div
               id={`chat-${model.model}`}

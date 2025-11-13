@@ -20,10 +20,23 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 -------------------------------------------------- */
 const AiModelProvider = ({ children }) => {
   const [selectedModels, setSelectedModels] = useState(DefaultModel);
-   const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState({}); // Updated to object
+  const [currentChatId, setCurrentChatId] = useState(null); // Added currentChatId
+  const [chats, setChats] = useState([]); // Added chats for consistency
 
   return (
-    <AiSelectedModelContext.Provider value={{ selectedModels, setSelectedModels ,messages, setMessages }}>
+    <AiSelectedModelContext.Provider
+      value={{
+        selectedModels,
+        setSelectedModels,
+        messages,
+        setMessages,
+        currentChatId,
+        setCurrentChatId,
+        chats,
+        setChats,
+      }}
+    >
       {children}
     </AiSelectedModelContext.Provider>
   );
@@ -34,7 +47,6 @@ const AiModelProvider = ({ children }) => {
 -------------------------------------------------- */
 function AppProviders({ children }) {
   const { user } = useUser();
- 
 
   useEffect(() => {
     const createNewUser = async () => {
