@@ -1,4 +1,5 @@
 "use client";
+
 import { Button } from "@/components/ui/button";
 import { useTheme } from "next-themes";
 import {
@@ -8,32 +9,59 @@ import {
   SidebarGroup,
   SidebarHeader,
 } from "@/components/ui/sidebar";
-import { Sun, Moon, Bolt, User2, LogOut, MessageSquare } from "lucide-react";
+import {
+  Sun,
+  Moon,
+  Bolt,
+  User2,
+  LogOut,
+  MessageSquare,
+  MoreVertical,
+  Trash,
+  Edit3,
+} from "lucide-react";
 import Image from "next/image";
 import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
 import UsageCreditProgress from "./UsageCreditProgress";
 
 import { db } from "@/config/FirebaseConfig";
-import { addDoc, collection, getDocs, doc, getDoc } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  deleteDoc,
+  updateDoc,
+} from "firebase/firestore";
 import { useContext, useEffect, useState } from "react";
 import { AiSelectedModelContext } from "@/context/AiSelectedModels";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+
 export function AppSidebar() {
   const { theme, setTheme } = useTheme();
-  const { isLoaded, isSignedIn, user } = useUser();
+  const { isSignedIn, user } = useUser();
 
-  // Consume context with fallback
   const context = useContext(AiSelectedModelContext);
+
   const {
     currentChatId = null,
-    setCurrentChatId = () => console.warn("setCurrentChatId not available"),
-    setMessages = () => console.warn("setMessages not available"),
+    setCurrentChatId = () => {},
+    setMessages = () => {},
   } = context || {};
 
   const [chats, setChats] = useState([]);
   const [error, setError] = useState(null);
 
-  // 🔹 Load existing chats from Firestore
+  /* --------------------------------------------- */
+  /* LOAD CHATS */
+  /* --------------------------------------------- */
   useEffect(() => {
     const loadChats = async () => {
       if (!user) return;
@@ -51,87 +79,128 @@ export function AppSidebar() {
         setChats(loadedChats);
       } catch (err) {
         console.error("❌ Error loading chats:", err);
-        setError("Failed to load chats. Please try again.");
+        setError("Failed to load chats. Try again.");
       }
     };
 
     loadChats();
   }, [user]);
 
-  // 🆕 Start a new chat with a meaningful title
+  /* --------------------------------------------- */
+  /* NEW CHAT */
+  /* --------------------------------------------- */
   const handleNewChat = async () => {
-    if (!user) return alert("Please sign in first.");
-    if (!context) {
-      console.error("❌ AiSelectedModelContext is not provided");
-      setError("Application error: Context not found. Please refresh the page.");
+    if (!isSignedIn || !user) {
+      alert("Sign in first.");
       return;
     }
 
     try {
       const userEmail = user.primaryEmailAddress.emailAddress;
-      const timestamp = new Date().toLocaleString();
-      const chatCount = chats.length + 1;
-      const chatTitle = `Chat #${chatCount} - ${timestamp}`;
+
+      const timestamp = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
 
       const chatData = {
         createdAt: Date.now(),
-        title: chatTitle,
+        title: `New Chat (${timestamp})`,
         messages: {},
       };
 
-      // Create new Firestore chat doc
       const newChatRef = await addDoc(
         collection(db, "users", userEmail, "chats"),
         chatData
       );
 
-      // Reset all model conversations
       setMessages({});
       setCurrentChatId(newChatRef.id);
-
-      // Dispatch clear event
       window.dispatchEvent(new Event("clearAllModelChats"));
 
       setChats((prev) => [{ id: newChatRef.id, ...chatData }, ...prev]);
-      console.log("✅ New chat started:", newChatRef.id);
+      setError(null);
     } catch (err) {
-      console.error("❌ Error creating new chat:", err);
-      setError("Failed to create new chat. Please try again.");
+      console.error("❌ Error creating chat:", err);
+      setError("Could not create chat.");
     }
   };
 
-  // 🔹 Load previous chat by ID
+  /* --------------------------------------------- */
+  /* LOAD CHAT */
+  /* --------------------------------------------- */
   const loadChat = async (chatId) => {
-    if (!user) return alert("Please sign in first.");
-    if (!context) {
-      console.error("❌ AiSelectedModelContext is not provided");
-      setError("Application error: Context not found. Please refresh the page.");
+    if (!isSignedIn || !user) {
+      alert("Sign in first.");
       return;
     }
 
     try {
       const userEmail = user.primaryEmailAddress.emailAddress;
-      const chatDocRef = doc(db, "users", userEmail, "chats", chatId);
-      const chatSnap = await getDoc(chatDocRef);
+      const ref = doc(db, "users", userEmail, "chats", chatId);
+      const snap = await getDoc(ref);
 
-      if (chatSnap.exists()) {
-        const chatData = chatSnap.data();
+      if (snap.exists()) {
+        const chatData = snap.data();
         setCurrentChatId(chatId);
         setMessages(chatData.messages || {});
-        console.log("✅ Loaded previous chat:", chatId);
-        setError(null);
       } else {
-        console.log("❌ Chat not found in DB");
         setError("Chat not found.");
       }
     } catch (err) {
-      console.error("❌ Error loading chat:", err);
-      setError("Failed to load chat. Please try again.");
+      console.error("❌ Load chat error:", err);
     }
   };
 
+  /* --------------------------------------------- */
+  /* DELETE CHAT */
+  /* --------------------------------------------- */
+  const deleteChat = async (chatId) => {
+    if (!user) return;
+    const confirmDelete = confirm("Delete this chat?");
+    if (!confirmDelete) return;
+
+    try {
+      const userEmail = user.primaryEmailAddress.emailAddress;
+      await deleteDoc(doc(db, "users", userEmail, "chats", chatId));
+
+      setChats((prev) => prev.filter((c) => c.id !== chatId));
+
+      if (currentChatId === chatId) {
+        setMessages({});
+        setCurrentChatId(null);
+      }
+    } catch (err) {
+      console.error("❌ Error deleting chat:", err);
+    }
+  };
+
+  /* --------------------------------------------- */
+  /* RENAME CHAT */
+  /* --------------------------------------------- */
+  const renameChat = async (chatId, oldTitle) => {
+    const newTitle = prompt("Enter new chat title", oldTitle);
+
+    if (!newTitle || newTitle.trim() === "") return;
+
+    try {
+      const userEmail = user.primaryEmailAddress.emailAddress;
+      const ref = doc(db, "users", userEmail, "chats", chatId);
+      await updateDoc(ref, { title: newTitle });
+
+      setChats((prev) =>
+        prev.map((c) => (c.id === chatId ? { ...c, title: newTitle } : c))
+      );
+    } catch (err) {
+      console.error("❌ Rename error:", err);
+    }
+  };
+
+  /* --------------------------------------------- */
+  /* COMPONENT */
+  /* --------------------------------------------- */
   return (
-    <Sidebar>
+    <Sidebar className="flex flex-col">
       <SidebarHeader>
         <div className="p-3">
           <div className="flex justify-between items-center">
@@ -140,7 +209,6 @@ export function AppSidebar() {
               <h2 className="font-bold text-xl">FusionAi</h2>
             </div>
 
-            {/* Theme toggle */}
             <Button
               variant="ghost"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -149,75 +217,99 @@ export function AppSidebar() {
             </Button>
           </div>
 
-          {/* New Chat Button */}
           <Button onClick={handleNewChat} className="mt-7 w-full">
             + New Chat
           </Button>
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="flex-grow overflow-y-auto">
         <SidebarGroup>
-          <div className="p-3">
+          <div className="px-3 pb-3">
             <h2 className="font-bold text-lg mb-2">Chats</h2>
-            {error && (
-              <p className="text-red-500 text-sm mb-2">{error}</p>
-            )}
-            {!isSignedIn && (
-              <p className="text-sm text-gray-400">
-                Sign in to start a new chat
-              </p>
-            )}
+
             {isSignedIn && chats.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-1 mt-2">
                 {chats.map((chat) => (
-                  <Button
-                    key={chat.id}
-                    variant={chat.id === currentChatId ? "secondary" : "ghost"}
-                    className="w-full justify-start text-sm truncate"
-                    onClick={() => loadChat(chat.id)}
-                  >
-                    <MessageSquare className="mr-2 h-4 w-4" />
-                    {chat.title || "Untitled Chat"}
-                  </Button>
+<div
+  key={chat.id}
+  className={`
+    flex items-center justify-between rounded-md px-2 py-2 cursor-pointer transition
+    ${
+      currentChatId === chat.id
+        ? "bg-gray-100 hover:bg-gray-200/70 dark:hover:bg-gray-700/60"
+        : "hover:bg-gray-50 dark:hover:bg-gray-500/50"
+    }
+  `}
+>
+                    <div
+                      onClick={() => loadChat(chat.id)}
+                      className="flex items-center gap-2 truncate flex-1"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      <span className="truncate">{chat.title}</span>
+                    </div>
+
+                    {/* 3-dot menu */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger>
+                        <MoreVertical className="h-4 w-4 opacity-70 hover:opacity-100" />
+                      </DropdownMenuTrigger>
+
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => renameChat(chat.id, chat.title)}
+                          className="cursor-pointer"
+                        >
+                          <Edit3 className="mr-2 w-4 h-4" /> Rename
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem
+                          onClick={() => deleteChat(chat.id)}
+                          className="cursor-pointer text-red-600"
+                        >
+                          <Trash className="mr-2 w-4 h-4" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 ))}
               </div>
             ) : (
-              isSignedIn && (
-                <p className="text-gray-400 text-sm">No chats yet</p>
-              )
+              isSignedIn && <p className="text-gray-400 text-sm">No chats yet</p>
             )}
           </div>
         </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>
-        <div className="p-3 mb-10">
-          {!isLoaded ? (
-            <p className="text-gray-400 text-sm">Loading...</p>
-          ) : !isSignedIn ? (
-            <SignInButton>
-              <Button className="w-full" size="lg">
-                Sign In / Sign Up
-              </Button>
-            </SignInButton>
-          ) : (
-            <div>
+        <div className="p-3 mb-4">
+          {isSignedIn ? (
+            <div className="space-y-3">
               <UsageCreditProgress />
-              <Button className="w-full mb-3">
-                <Bolt /> Upgrade Plan
+
+              <Button className="w-full mb-2 py-2 text-sm">
+                <Bolt /> Upgrade
               </Button>
-              <Button className="flex w-full mb-3" variant="ghost" size="lg">
+
+              <Button className="flex w-full" variant="ghost" size="sm">
                 <User2 />
-                <h2 className="ml-2">Settings</h2>
+                <span className="ml-2">Settings</span>
               </Button>
+
               <SignOutButton>
-                <Button className="flex w-full" variant="ghost" size="lg">
+                <Button className="flex w-full" variant="ghost" size="sm">
                   <LogOut />
-                  <h2 className="ml-2">Sign Out</h2>
+                  <span className="ml-2">Sign Out</span>
                 </Button>
               </SignOutButton>
             </div>
+          ) : (
+            <SignInButton>
+              <Button className="w-full py-2 text-sm">
+                Sign In / Sign Up
+              </Button>
+            </SignInButton>
           )}
         </div>
       </SidebarFooter>

@@ -6,7 +6,11 @@ import React, { useEffect, useState, useContext } from "react";
 import AiMultiModels from "./AiMultiModel";
 import { AiSelectedModelContext } from "@/context/AiSelectedModels";
 import { db } from "@/config/FirebaseConfig";
-import { doc, setDoc } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { useUser } from "@clerk/nextjs";
 
 const ChatInputBox = () => {
@@ -14,143 +18,173 @@ const ChatInputBox = () => {
   const [alertMessage, setAlertMessage] = useState("");
   const { user } = useUser();
 
-  // Ensure context is consumed correctly with fallback
   const context = useContext(AiSelectedModelContext);
   const {
     selectedModels = {},
     messages = {},
-    setMessages = () => console.warn("setMessages not available"),
-    currentChatId = null,
+    setMessages = () => {},
+    currentChatId,
+    setCurrentChatId,
   } = context || {};
 
-  const saveChatToDB = async (newMessages) => {
+  /* ---------------------------------------------------------------------------
+      SAVE CHAT TO FIRESTORE *ONLY INSIDE USER PATH*
+     --------------------------------------------------------------------------- */
+  const saveChatToDB = async (updatedMessages) => {
     if (!user || !currentChatId) {
-      console.warn("⚠️ Cannot save chat: user or currentChatId is missing", { user, currentChatId });
-      setAlertMessage("⚠️ Unable to save chat. Please start a new chat.");
-      setTimeout(() => setAlertMessage(""), 3000);
+      console.warn("⚠️ Cannot save chat: no user or chatId");
       return;
     }
+
+    const userEmail = user.primaryEmailAddress.emailAddress;
+
     try {
-      const userEmail = user.primaryEmailAddress.emailAddress;
-      const chatDoc = doc(db, "users", userEmail, "chats", currentChatId);
-      await setDoc(chatDoc, { messages: newMessages }, { merge: true });
-      console.log(`✅ Chat ${currentChatId} saved`);
+      const userChatDoc = doc(db, "users", userEmail, "chats", currentChatId);
+
+      await setDoc(
+        userChatDoc,
+        {
+          chatId: currentChatId,
+          messages: updatedMessages,
+          updatedAt: Date.now(),
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      // UPDATE USER ROOT DOC WITH THIS CHAT
+      const userMainDoc = doc(db, "users", userEmail);
+      await setDoc(
+        userMainDoc,
+        {
+          chats: { [currentChatId]: true },
+        },
+        { merge: true }
+      );
+
+      console.log("💾 Saved under: users/" + userEmail + "/chats/" + currentChatId);
     } catch (err) {
-      console.error("❌ Error saving chat to DB:", err);
-      setAlertMessage("⚠️ Failed to save chat. Please try again.");
-      setTimeout(() => setAlertMessage(""), 3000);
+      console.error("❌ Error saving chat:", err);
     }
   };
 
+  /* ---------------------------------------------------------------------------
+      SEND MESSAGE HANDLER
+     --------------------------------------------------------------------------- */
   const handleSend = async () => {
     if (!userInput.trim()) return;
 
-    // Filter enabled models
-    const enabledModels = Object.entries(selectedModels).filter(
-      ([, model]) => model.enabled && model.modelId
-    );
-
-    if (enabledModels.length === 0) {
-      setAlertMessage("⚠️ Please enable and select a model to chat.");
+    if (!currentChatId) {
+      setAlertMessage("⚠️ Start a new chat from the sidebar first.");
       setTimeout(() => setAlertMessage(""), 3000);
       return;
     }
 
-    // Add user message to enabled models
+    // Enabled models with valid ID
+    const enabledModels = Object.entries(selectedModels).filter(
+      ([, m]) => m?.enabled && m?.modelId
+    );
+
+    if (enabledModels.length === 0) {
+      setAlertMessage("⚠️ Please enable a model before chatting.");
+      setTimeout(() => setAlertMessage(""), 3000);
+      return;
+    }
+
+    const userText = userInput;
+    setUserInput("");
+
+    /* ------------------------------ 1) ADD USER MESSAGE ----------------------------- */
     setMessages((prev) => {
       const updated = { ...prev };
-      enabledModels.forEach(([key]) => {
-        updated[key] = [
-          ...(updated[key] ?? []),
-          { role: "user", content: userInput },
-        ];
+      enabledModels.forEach(([name]) => {
+        updated[name] = [...(updated[name] ?? []), { role: "user", content: userText }];
       });
+      saveChatToDB(updated);
       return updated;
     });
 
-    const currentInput = userInput;
-    setUserInput("");
-
-    // Add "Thinking..." placeholders
+    /* --------------------- 2) ADD THINKING PLACEHOLDER FOR EACH MODEL --------------------- */
     setMessages((prev) => {
       const updated = { ...prev };
-      enabledModels.forEach(([key]) => {
-        updated[key] = [
-          ...(updated[key] ?? []),
+      enabledModels.forEach(([name]) => {
+        updated[name] = [
+          ...(updated[name] ?? []),
           {
             role: "assistant",
+            model: name,
             content: "Thinking...",
-            model: key,
             loading: true,
           },
         ];
       });
+      saveChatToDB(updated);
       return updated;
     });
 
-    // Send requests concurrently
-    const requests = enabledModels.map(async ([parentModel, modelInfo]) => {
+    /* ------------------------------ 3) SEND TO API ------------------------------ */
+    const requests = enabledModels.map(async ([parentModel, info]) => {
       try {
         const response = await axios.post("/api/ai-multi-model", {
-          model: modelInfo.modelId,
-          msg: [{ role: "user", content: currentInput }],
+          model: info.modelId,
+          msg: [{ role: "user", content: userText }],
           parentModel,
         });
 
         const { aiResponse } = response.data;
 
+        // Replace placeholder
         setMessages((prev) => {
-          const updated = [...(prev[parentModel] ?? [])];
-          const idx = updated.findIndex((m) => m.loading);
-          if (idx !== -1) {
-            updated[idx] = {
+          const updated = { ...prev };
+          const arr = [...(updated[parentModel] ?? [])];
+
+          const index = arr.findIndex((m) => m.loading);
+          if (index !== -1) {
+            arr[index] = {
               role: "assistant",
+              model: parentModel,
               content: aiResponse,
               loading: false,
-              model: parentModel,
             };
           }
-          return { ...prev, [parentModel]: updated };
+
+          updated[parentModel] = arr;
+          saveChatToDB(updated);
+          return updated;
         });
-      } catch (error) {
-        setMessages((prev) => ({
-          ...prev,
-          [parentModel]: [
-            ...(prev[parentModel] ?? []),
+      } catch (err) {
+        console.error("❌ AI Error:", err);
+        setMessages((prev) => {
+          const updated = { ...prev };
+          updated[parentModel] = [
+            ...(updated[parentModel] ?? []),
             {
               role: "assistant",
+              model: parentModel,
               content: "⚠️ Error fetching response.",
               loading: false,
-              model: parentModel,
             },
-          ],
-        }));
+          ];
+          saveChatToDB(updated);
+          return updated;
+        });
       }
     });
 
     await Promise.allSettled(requests);
-
-    // Save updated messages to Firestore
-    await saveChatToDB(messages);
   };
-
-  useEffect(() => {
-    console.log(messages);
-  }, [messages]);
 
   return (
     <div className="relative min-h-screen">
-      {/* Model Manager */}
       <AiMultiModels />
 
-      {/* Alert */}
       {alertMessage && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-2 rounded-md shadow-md text-sm">
           {alertMessage}
         </div>
       )}
 
-      {/* Input Section */}
+      {/* INPUT BOX */}
       <div className="fixed bottom-0 left-0 w-full flex justify-center px-4 pb-4">
         <div className="w-full max-w-2xl border rounded-xl shadow-md p-4 bg-white">
           <input
@@ -161,6 +195,7 @@ const ChatInputBox = () => {
             onChange={(e) => setUserInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
           />
+
           <div className="mt-3 flex justify-between items-center">
             <Button variant="ghost" size="icon">
               <Paperclip className="h-5 w-5" />
@@ -169,6 +204,7 @@ const ChatInputBox = () => {
               <Button variant="ghost" size="icon" className="mr-2">
                 <Mic className="h-5 w-5" />
               </Button>
+
               <Button
                 onClick={handleSend}
                 size="icon"
