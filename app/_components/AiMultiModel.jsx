@@ -70,9 +70,18 @@ const AiMultiModel = () => {
   }, [user]);
 
   /* ------------------------------------------------------------------ */
-  /* 🔹 RESET CHAT WHEN NEW CHAT STARTS */
+  /* 🔹 RESET CHAT WHEN NEW CHAT STARTS OR EVENT IS TRIGGERED */
   /* ------------------------------------------------------------------ */
   useEffect(() => {
+    const handleClearChats = () => {
+      const cleared = {};
+      AiModels.forEach((m) => (cleared[m.model] = []));
+      setMessages(cleared);
+      console.log("🆕 Cleared all model chats via event");
+    };
+
+    window.addEventListener("clearAllModelChats", handleClearChats);
+
     if (!user || !currentChatId) return;
 
     const loadChatHistory = async () => {
@@ -82,23 +91,27 @@ const AiMultiModel = () => {
         const snapshot = await getDoc(chatDoc);
 
         if (snapshot.exists()) {
-          const chatData = snapshot.data();
-          setMessages(chatData.messages || {});
-          console.log("✅ Restored chat:", currentChatId);
-        } else {
-          // 🆕 Reset all chats for a fresh conversation
-          const cleared = {};
-          AiModels.forEach((m) => (cleared[m.model] = []));
-          setMessages(cleared);
-          console.log("🆕 Started a new fresh chat session:", currentChatId);
-        }
+  const chatData = snapshot.data();
+  console.log("📥 Loaded chat from DB:", chatData.messages);
+  setMessages(chatData.messages || {});
+} else {
+  const emptyChat = {};
+  AiModels.forEach((m) => (emptyChat[m.model] = []));
+  setMessages(emptyChat);
+  console.log("🆕 New chat - No previous messages");
+}
+
       } catch (err) {
         console.error("❌ Error loading chat history:", err);
       }
     };
 
     loadChatHistory();
-  }, [user, currentChatId]);
+
+    return () => {
+      window.removeEventListener("clearAllModelChats", handleClearChats);
+    };
+  }, [user, currentChatId, setMessages]);
 
   /* ------------------------------------------------------------------ */
   /* 🔹 AUTO-SCROLL TO BOTTOM */
