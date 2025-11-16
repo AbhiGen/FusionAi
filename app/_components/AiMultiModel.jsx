@@ -8,7 +8,7 @@ import { useUser, SignInButton } from "@clerk/nextjs";
 import AiModels from "../../shared/AiModel";
 import { DefaultModel } from "../../shared/AiModelDef";
 import Image from "next/image";
-import { Lock, MessageSquare } from "lucide-react";
+import { Lock, MessageSquare, Paperclip } from "lucide-react"; // Added Paperclip for file display
 import {
   Select,
   SelectContent,
@@ -23,9 +23,11 @@ import { Button } from "@/components/ui/button";
 import { AiSelectedModelContext } from "@/context/AiSelectedModels";
 import { db } from "@/config/FirebaseConfig";
 import { doc, setDoc, collection, getDocs, getDoc } from "firebase/firestore";
+import { useTheme } from "next-themes";
 
 const AiMultiModel = () => {
   const { user, isSignedIn } = useUser();
+  const { theme } = useTheme();
   const [aimodel, setAiModels] = useState(AiModels);
 
   const {
@@ -36,10 +38,8 @@ const AiMultiModel = () => {
     currentChatId,
   } = useContext(AiSelectedModelContext);
 
-  /* ------------------------------------------------------------------ */
-  /* 🔹 LOAD USER MODEL SELECTIONS */
-  /* ------------------------------------------------------------------ */
   useEffect(() => {
+    console.log("Current theme:", theme); // Debug theme state
     const loadSelections = async () => {
       if (!user) return;
       try {
@@ -67,11 +67,8 @@ const AiMultiModel = () => {
       }
     };
     loadSelections();
-  }, [user]);
+  }, [user, theme]);
 
-  /* ------------------------------------------------------------------ */
-  /* 🔹 RESET CHAT WHEN NEW CHAT STARTS OR EVENT IS TRIGGERED */
-  /* ------------------------------------------------------------------ */
   useEffect(() => {
     const handleClearChats = () => {
       const cleared = {};
@@ -91,16 +88,15 @@ const AiMultiModel = () => {
         const snapshot = await getDoc(chatDoc);
 
         if (snapshot.exists()) {
-  const chatData = snapshot.data();
-  console.log("📥 Loaded chat from DB:", chatData.messages);
-  setMessages(chatData.messages || {});
-} else {
-  const emptyChat = {};
-  AiModels.forEach((m) => (emptyChat[m.model] = []));
-  setMessages(emptyChat);
-  console.log("🆕 New chat - No previous messages");
-}
-
+          const chatData = snapshot.data();
+          console.log("📥 Loaded chat from DB:", chatData.messages);
+          setMessages(chatData.messages || {});
+        } else {
+          const emptyChat = {};
+          AiModels.forEach((m) => (emptyChat[m.model] = []));
+          setMessages(emptyChat);
+          console.log("🆕 New chat - No previous messages");
+        }
       } catch (err) {
         console.error("❌ Error loading chat history:", err);
       }
@@ -113,9 +109,6 @@ const AiMultiModel = () => {
     };
   }, [user, currentChatId, setMessages]);
 
-  /* ------------------------------------------------------------------ */
-  /* 🔹 AUTO-SCROLL TO BOTTOM */
-  /* ------------------------------------------------------------------ */
   useEffect(() => {
     aimodel.forEach((model) => {
       const chatDiv = document.getElementById(`chat-${model.model}`);
@@ -123,9 +116,6 @@ const AiMultiModel = () => {
     });
   }, [messages]);
 
-  /* ------------------------------------------------------------------ */
-  /* 🔹 TOGGLE MODEL ENABLE/DISABLE */
-  /* ------------------------------------------------------------------ */
   const onToggleChange = (modelName, value) => {
     setAiModels((prev) =>
       prev.map((m) => (m.model === modelName ? { ...m, enable: value } : m))
@@ -140,9 +130,6 @@ const AiMultiModel = () => {
     }));
   };
 
-  /* ------------------------------------------------------------------ */
-  /* 🔹 SAVE SELECTED SUBMODEL */
-  /* ------------------------------------------------------------------ */
   const handleModelSelect = async (parentModel, selectedSubModelId) => {
     if (!user) return console.warn("⚠️ Sign in to save model selection.");
     try {
@@ -186,9 +173,6 @@ const AiMultiModel = () => {
     }
   };
 
-  /* ------------------------------------------------------------------ */
-  /* 🔹 SAVE CHAT TO FIRESTORE */
-  /* ------------------------------------------------------------------ */
   const saveChatToDB = async (newMessages) => {
     if (!user || !currentChatId) return;
     try {
@@ -201,9 +185,6 @@ const AiMultiModel = () => {
     }
   };
 
-  /* ------------------------------------------------------------------ */
-  /* 🔹 SEND MESSAGE */
-  /* ------------------------------------------------------------------ */
   const handleSend = async (model, userInput) => {
     if (!isSignedIn) return alert("⚠️ Please sign in first to chat!");
     if (!model.enable || !userInput.trim()) return;
@@ -243,9 +224,6 @@ const AiMultiModel = () => {
     }
   };
 
-  /* ------------------------------------------------------------------ */
-  /* 🔹 UI HELPERS */
-  /* ------------------------------------------------------------------ */
   const getFreeSubModels = (model) =>
     model.subModel.filter((sub) => !sub.premium);
   const getPremiumSubModels = (model) =>
@@ -259,24 +237,29 @@ const AiMultiModel = () => {
     );
   };
 
-  /* ------------------------------------------------------------------ */
-  /* 🔹 RENDER */
-  /* ------------------------------------------------------------------ */
   return (
-    <div className="flex flex-1 h-[75vh] border-b">
+    <div
+      className={`flex flex-1 h-[75vh] border-b ${
+        theme === "light" ? "bg-white text-black" : "bg-black text-white"
+      } dark:border-gray-700`}
+    >
       {aimodel.map((model, index) => (
         <div
           key={model.model || index}
-          className={`flex flex-col border-r h-full overflow-hidden ${
+          className={`flex flex-col border-r h-full overflow-hidden dark:border-gray-700 ${
             model.enable
               ? "min-w-[350px] transition-all duration-300 ease-in-out"
               : "w-[100px] flex-none"
           }`}
         >
-          {/* Header */}
-          <div className="flex w-full items-center justify-between p-4 border-b h-[70px] bg-white shadow-sm">
+          <div className="flex w-full items-center justify-between p-4 border-b h-[70px] bg-white shadow-sm dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-4">
-              <Image src={model.icon} alt={model.model} width={24} height={24} />
+              <Image
+                src={model.icon}
+                alt={model.model}
+                width={24}
+                height={24}
+              />
               {model.enable && (
                 <Select
                   disabled={model.premium}
@@ -288,10 +271,10 @@ const AiMultiModel = () => {
                     handleModelSelect(model.model, value)
                   }
                 >
-                  <SelectTrigger className="w-[200px] rounded-xl border-gray-300 focus:ring-2 focus:ring-blue-500">
+                  <SelectTrigger className="w-[200px] rounded-xl border-gray-300 focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:focus:ring-blue-400">
                     <SelectValue placeholder={getDefaultModelName(model)} />
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl shadow-lg">
+                  <SelectContent className="rounded-xl shadow-lg dark:bg-gray-700 dark:text-gray-100">
                     {getFreeSubModels(model).length > 0 && (
                       <SelectGroup>
                         <SelectLabel>Free</SelectLabel>
@@ -330,18 +313,19 @@ const AiMultiModel = () => {
                 />
               ) : (
                 <MessageSquare
-                  className="cursor-pointer text-gray-600 hover:text-blue-600 transition-colors"
+                  className="cursor-pointer text-gray-600 hover:text-blue-600 transition-colors dark:text-gray-400 dark:hover:text-blue-400"
                   onClick={() => onToggleChange(model.model, true)}
                 />
               )}
             </div>
           </div>
 
-          {/* Chat area */}
           {model.enable && (
             <div
               id={`chat-${model.model}`}
-              className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50"
+              className={`flex-1 overflow-y-auto p-4 space-y-4 ${
+                theme === "light" ? "bg-white text-black" : "bg-black text-white"
+              }`}
             >
               {isSignedIn ? (
                 messages[model.model]?.length > 0 ? (
@@ -353,30 +337,58 @@ const AiMultiModel = () => {
                       }`}
                     >
                       <div
-                        className={`max-w-[80%] p-4 rounded-3xl shadow-md text-sm leading-relaxed break-words transition-all duration-300 ${
-                          m.role === "user"
-                            ? "bg-gradient-to-br from-blue-600 to-blue-500 text-white rounded-br-none"
-                            : "bg-white text-gray-800 border border-gray-200 rounded-bl-none"
-                        }`}
+                        className={`max-w-[80%] p-4 rounded-3xl shadow-md text-sm leading-relaxed break-words transition-all duration-300
+                          ${
+                            m.role === "user"
+                              ? "bg-gradient-to-br from-blue-600 to-blue-500 text-white rounded-br-none"
+                              : "bg-white text-gray-800 border border-gray-200 rounded-bl-none dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700"
+                          }
+                        `}
                       >
-                        <div className="prose prose-sm max-w-none">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            rehypePlugins={[rehypeHighlight]}
-                          >
-                            {m.content}
-                          </ReactMarkdown>
+                        <div className="prose prose-sm max-w-none dark:prose-invert">
+                          {typeof m.content === "string" ? (
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              rehypePlugins={[rehypeHighlight]}
+                            >
+                              {m.content}
+                            </ReactMarkdown>
+                          ) : (
+                            <div className="space-y-2">
+                              {/* Render text if it exists */}
+                              {m.content.text && (
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm]}
+                                  rehypePlugins={[rehypeHighlight]}
+                                >
+                                  {m.content.text}
+                                </ReactMarkdown>
+                              )}
+                              {/* Render file attachment if it exists */}
+                              {m.content.file && (
+                                <div className="flex items-center gap-2 mt-2 p-2 bg-gray-100 dark:bg-gray-700 rounded-md text-xs">
+                                  <Paperclip className="h-4 w-4" />
+                                  <span className="font-medium">
+                                    {m.content.file}
+                                  </span>
+                                  <span className="text-gray-500 dark:text-gray-400">
+                                    (attached)
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-center text-gray-500 mt-4">
+                  <p className="text-center text-gray-500 mt-4 dark:text-gray-400">
                     💬 Start chatting with {model.model}
                   </p>
                 )
               ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center text-gray-600">
+                <div className="flex flex-col items-center justify-center h-full text-center text-gray-600 dark:text-gray-400">
                   <p className="mb-4">🔒 Please sign in to start chatting</p>
                   <SignInButton mode="modal">
                     <Button className="rounded-xl px-6">Sign In</Button>

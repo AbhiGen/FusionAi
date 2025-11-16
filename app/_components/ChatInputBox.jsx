@@ -1,7 +1,7 @@
 "use client";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-import { Mic, Paperclip, Send } from "lucide-react";
+import { Send } from "lucide-react"; // Removed Paperclip and Mic
 import React, { useEffect, useState, useContext } from "react";
 import AiMultiModels from "./AiMultiModel";
 import { AiSelectedModelContext } from "@/context/AiSelectedModels";
@@ -12,11 +12,12 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { useUser } from "@clerk/nextjs";
+import { useTheme } from "next-themes";
 
 const ChatInputBox = () => {
   const [userInput, setUserInput] = useState("");
-  const [alertMessage, setAlertMessage] = useState("");
   const { user } = useUser();
+  const { theme } = useTheme();
 
   const context = useContext(AiSelectedModelContext);
   const {
@@ -75,19 +76,16 @@ const ChatInputBox = () => {
     if (!userInput.trim()) return;
 
     if (!currentChatId) {
-      setAlertMessage("⚠️ Start a new chat from the sidebar first.");
-      setTimeout(() => setAlertMessage(""), 3000);
+      alert("⚠️ Start a new chat from the sidebar first.");
       return;
     }
 
-    // Enabled models with valid ID
     const enabledModels = Object.entries(selectedModels).filter(
       ([, m]) => m?.enabled && m?.modelId
     );
 
     if (enabledModels.length === 0) {
-      setAlertMessage("⚠️ Please enable a model before chatting.");
-      setTimeout(() => setAlertMessage(""), 3000);
+      alert("⚠️ Please enable a model before chatting.");
       return;
     }
 
@@ -128,12 +126,15 @@ const ChatInputBox = () => {
         const response = await axios.post("/api/ai-multi-model", {
           model: info.modelId,
           msg: [{ role: "user", content: userText }],
-          parentModel,
+          parentmodel: parentModel,
+        }, {
+          headers: {
+            "Content-Type": "application/json",
+          },
         });
 
         const { aiResponse } = response.data;
 
-        // Replace placeholder
         setMessages((prev) => {
           const updated = { ...prev };
           const arr = [...(updated[parentModel] ?? [])];
@@ -161,7 +162,7 @@ const ChatInputBox = () => {
             {
               role: "assistant",
               model: parentModel,
-              content: "⚠️ Error fetching response.",
+              content: `⚠️ Error: ${err.message || "Failed to fetch response."}`,
               loading: false,
             },
           ];
@@ -178,41 +179,36 @@ const ChatInputBox = () => {
     <div className="relative min-h-screen">
       <AiMultiModels />
 
-      {alertMessage && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-2 rounded-md shadow-md text-sm">
-          {alertMessage}
-        </div>
-      )}
-
       {/* INPUT BOX */}
       <div className="fixed bottom-0 left-0 w-full flex justify-center px-4 pb-4">
-        <div className="w-full max-w-2xl border rounded-xl shadow-md p-4 bg-white">
-          <input
-            type="text"
-            placeholder="Ask me anything..."
-            className="border-0 outline-none w-full"
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          />
+        <div
+          className={`w-full max-w-2xl border rounded-xl shadow-md p-4 ${
+            theme === "light" ? "bg-white text-black" : "bg-gray-800 text-white"
+          } dark:border-gray-700`}
+        >
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Ask me anything..."
+              className={`border-0 outline-none flex-1 ${
+                theme === "light" ? "text-black" : "text-white"
+              } bg-transparent`}
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSend()}
+            />
+          </div>
 
-          <div className="mt-3 flex justify-between items-center">
-            <Button variant="ghost" size="icon">
-              <Paperclip className="h-5 w-5" />
+          <div className="mt-3 flex justify-end">
+            <Button
+              onClick={handleSend}
+              size="icon"
+              className={`bg-black hover:bg-violet-600 ${
+                theme === "dark" ? "text-white" : "text-white"
+              }`}
+            >
+              <Send className="h-5 w-5" />
             </Button>
-            <div>
-              <Button variant="ghost" size="icon" className="mr-2">
-                <Mic className="h-5 w-5" />
-              </Button>
-
-              <Button
-                onClick={handleSend}
-                size="icon"
-                className="bg-black hover:bg-violet-600"
-              >
-                <Send className="h-5 w-5 text-white" />
-              </Button>
-            </div>
           </div>
         </div>
       </div>

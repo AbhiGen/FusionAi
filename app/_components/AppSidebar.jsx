@@ -231,17 +231,21 @@ export function AppSidebar() {
             {isSignedIn && chats.length > 0 ? (
               <div className="space-y-1 mt-2">
                 {chats.map((chat) => (
-<div
-  key={chat.id}
-  className={`
-    flex items-center justify-between rounded-md px-2 py-2 cursor-pointer transition
-    ${
-      currentChatId === chat.id
-        ? "bg-gray-100 hover:bg-gray-200/70 dark:hover:bg-gray-700/60"
-        : "hover:bg-gray-50 dark:hover:bg-gray-500/50"
-    }
-  `}
->
+                  <div
+                    key={chat.id}
+                    className={`
+                      flex items-center justify-between rounded-md px-2 py-2 cursor-pointer transition
+                      ${
+                        currentChatId === chat.id
+                          ? theme === "light"
+                            ? "bg-gray-100 hover:bg-gray-200/70"
+                            : "bg-gray-700 hover:bg-gray-600/70"
+                          : theme === "light"
+                          ? "hover:bg-gray-50"
+                          : "hover:bg-gray-500/50"
+                      }
+                    `}
+                  >
                     <div
                       onClick={() => loadChat(chat.id)}
                       className="flex items-center gap-2 truncate flex-1"
@@ -286,19 +290,8 @@ export function AppSidebar() {
         <div className="p-3 mb-4">
           {isSignedIn ? (
             <div className="space-y-3">
-              <UsageCreditProgress />
-
-              <Button className="w-full mb-2 py-2 text-sm">
-                <Bolt /> Upgrade
-              </Button>
-
-              <Button className="flex w-full" variant="ghost" size="sm">
-                <User2 />
-                <span className="ml-2">Settings</span>
-              </Button>
-
               <SignOutButton>
-                <Button className="flex w-full" variant="ghost" size="sm">
+                <Button className="flex w-full">
                   <LogOut />
                   <span className="ml-2">Sign Out</span>
                 </Button>
